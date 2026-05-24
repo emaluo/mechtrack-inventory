@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#211914">
+    <meta name="description" content="MechTrack field app for machine parts inventory with Supabase login and shared cloud data.">
+    <title>MechTrack Field</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Cloud field inventory</p>
+        <h1>MechTrack</h1>
+        <p class="header-subtitle">Machine parts inventory with shared cloud data, admin users, and standard users.</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-button" id="refreshBtn" title="Refresh cloud data" type="button">RF</button>
+        <button class="primary-button" id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section id="authView" class="panel auth-panel">
+        <div class="panel-title">
+          <h2>Sign in</h2>
+          <span>Cloud field-test</span>
+        </div>
+        <form id="authForm" class="form-grid">
+          <label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="6"></label>
+          <div class="form-actions full">
+            <button class="primary-button" name="mode" value="signin" type="submit">Sign in</button>
+            <button class="ghost-button" name="mode" value="signup" type="submit">Create account</button>
+          </div>
+        </form>
+        <p class="fine-print">The first account created becomes the admin. Later accounts become standard users until an admin changes their role.</p>
+      </section>
+
+      <section id="appView" class="cloud-app hidden">
+        <section class="toolbar" aria-label="Inventory tools">
+          <label class="search-box">
+            <span>Search</span>
+            <input id="searchInput" type="search" placeholder="Machine, serial, part number, name, location">
+          </label>
+          <div class="segmented" role="tablist" aria-label="Views">
+            <button class="segment active" data-view="dashboard" type="button">Dashboard</button>
+            <button class="segment admin-only" data-view="manage" type="button">Manage</button>
+            <button class="segment" data-view="lookup" type="button">Serial lookup</button>
+            <button class="segment admin-only" data-view="users" type="button">Users</button>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="Inventory metrics">
+          <div class="metric"><span>Role</span><strong id="metricRole">-</strong></div>
+          <div class="metric"><span>Machines</span><strong id="metricMachines">0</strong></div>
+          <div class="metric"><span>Total parts</span><strong id="metricParts">0</strong></div>
+          <div class="metric"><span>Units</span><strong id="metricUnits">0</strong></div>
+          <div class="metric warn"><span>Low stock</span><strong id="metricLow">0</strong></div>
+          <div class="metric urgent"><span>No stock</span><strong id="metricOut">0</strong></div>
+        </section>
+
+        <section class="ops-strip" aria-label="Application status">
+          <span id="cloudStatus">Connecting to Supabase...</span>
+          <span>Photos paused until OCR scanning is ready</span>
+          <span>Cloud shared over cellular data</span>
+        </section>
+
+        <section id="dashboardView" class="view active-view">
+          <div class="grid-layout">
+            <section class="panel">
+              <div class="panel-title"><h2>Machines and parts</h2><span id="resultCount">0 results</span></div>
+              <div id="inventoryList" class="inventory-list"></div>
+            </section>
+            <aside class="panel detail-panel">
+              <div class="panel-title"><h2 id="detailTitle">Select a part</h2><span id="detailSku"></span></div>
+              <div id="partDetail" class="detail-empty">Choose a machine part to inspect stock, serials, and movement history.</div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="manageView" class="view">
+          <form id="machineForm" class="form-grid panel machine-form admin-only">
+            <div class="panel-title full"><h2>Add machine</h2><span>Admin only</span></div>
+            <label>Machine name<input name="name" required placeholder="Conveyor Line 3"></label>
+            <label>Asset tag<input name="asset_tag" required placeholder="CV-003"></label>
+            <label>Area<input name="area" placeholder="Packaging"></label>
+            <label>Notes<input name="notes" placeholder="Line, cell, or maintenance notes"></label>
+            <div class="form-actions full"><button class="primary-button" type="submit">Add machine</button><button class="ghost-button" type="reset">Clear</button></div>
+          </form>
+
+          <form id="partForm" class="form-grid panel admin-only">
+            <div class="panel-title full"><h2>Add machine part</h2><span>Admin only</span></div>
+            <label>Machine<select id="partMachineSelect" name="machine_id" required></select></label>
+            <label>Part name<input name="name" required placeholder="Flanged Bearing"></label>
+            <label>Part number / SKU<input name="sku" required placeholder="BRG-FL-204"></label>
+            <label>Category<input name="category" placeholder="Bearings"></label>
+            <label>Manufacturer<input name="manufacturer" placeholder="Koyo"></label>
+            <label>Quantity<input name="quantity" type="number" min="0" step="1" value="1"></label>
+            <label>Low stock alert<input name="low_stock" type="number" min="0" step="1" value="0"></label>
+            <label>Storage location<select id="partLocationSelect" name="location_id" required></select></label>
+            <label>Condition<select name="condition"><option>Available</option><option>Needs inspection</option><option>Reserved</option><option>Damaged</option></select></label>
+            <label class="full">Description<textarea name="description" rows="3" placeholder="Usage, machine fit, dimensions, notes"></textarea></label>
+            <label class="full">Serial numbers<textarea name="serials" rows="4" placeholder="One serial per line or comma separated"></textarea></label>
+            <div class="form-actions full"><button class="primary-button" type="submit">Add part</button><button class="ghost-button" type="reset">Clear</button></div>
+          </form>
+        </section>
+
+        <section id="lookupView" class="view">
+          <div class="panel lookup-panel">
+            <div class="panel-title"><h2>Serial lookup</h2><span>Standard users can search</span></div>
+            <label class="lookup-input">Serial number<input id="serialLookup" placeholder="SN-BRG-204-8831"></label>
+            <div id="lookupResult" class="lookup-result">Enter a serial number to find its machine, part, location, and status.</div>
+          </div>
+        </section>
+
+        <section id="usersView" class="view">
+          <section class="panel admin-only">
+            <div class="panel-title"><h2>Users</h2><span>Admin only</span></div>
+            <div id="userList" class="inventory-list"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="supabase-config.js"></script>
+    <script src="field-app.js"></script>
+  </body>
+</html>
